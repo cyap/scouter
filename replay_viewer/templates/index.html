@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+  <body>
+  <h4>Replay Scouter</h4>
+    <form method="POST">
+      {% csrf_token %}
+      {{ form }}
+      <input type="submit">
+    </form>
+  </body>
+  <style>
+    textarea {
+      display: block;
+    }
+  </style>
+</html>
+
+
+

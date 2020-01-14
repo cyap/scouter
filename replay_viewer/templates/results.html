@@ -1,0 +1,16 @@
+<html>
+<body>
+<table>
+  {% for team in object_list %}
+    <tr>
+      <td><a href="{{ team.replay.url }}">Replay</a></td>
+      {% for pokemon in team.data %}
+        <td>
+          <img src="https://www.smogon.com/forums//media/minisprites/{{ pokemon.lower }}.png"/>
+        </td>
+      {% endfor %}
+    </tr>
+{% endfor %}
+</table>
+</body>
+</html>
