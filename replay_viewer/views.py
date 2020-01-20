@@ -4,7 +4,9 @@ from typing import Dict
 import requests
 from bs4 import BeautifulSoup
 from django.db import transaction
+from django.db.models import Q
 from django.urls import reverse
+from django.utils.http import urlencode
 from django.views.generic import FormView, ListView
 from urllib.parse import quote
 
@@ -32,7 +34,7 @@ def search_replays(player_name, tier, url_header=URL_HEADER):
 @transaction.atomic
 def process_replays(form) -> int:
     urls = {
-        *form.cleaned_data['urls'].splitlines(),
+        *form.cleaned_data['urls'],
         *search_replays(form.cleaned_data['player_name'], form.cleaned_data['tier'])
     } - set(Replay.objects.values_list('url', flat=True))
     if not urls: return 1
@@ -117,15 +119,25 @@ class IndexView(FormView):
 
     def get_success_url(self):
         base_url = reverse('results', kwargs={'id': self.task_id})
-        return f'{base_url}?player_name={self.form.cleaned_data["player_name"]}'
+        params = {
+            'player_name': self.form.cleaned_data['player_name'],
+            'urls': self.form.cleaned_data['urls'],
+            'alt_names': self.form.cleaned_data['alt_names']
+        }
+        return f'{base_url}?{urlencode(params, True)}'#?player_name={self.form.cleaned_data["player_name"]}'
+        #return f'{base_url}?player_name={self.form.cleaned_data["player_name"]}'
 
 
 class ResultsView(ListView):
     template_name = 'results.html'
 
     def get_queryset(self):
-        if 'player_name' in self.request.GET:
-            player_name = normalize_str(self.request.GET['player_name'])
-            return Team.objects.filter(player__name=player_name)
-        raise Exception
-
+        player_names = (
+            normalize_str(name)
+            for name in self.request.GET.getlist('alt_names') + [self.request.GET['player_name']]
+        )
+        # TODO: should fetch from a task name: messaging queue
+        return Team.objects.filter(
+            Q(player__name__in=player_names) |
+            Q(replay__url__in=self.request.GET.getlist('urls'))
+        ).prefetch_related('replay', 'player')
