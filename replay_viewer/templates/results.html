@@ -1,5 +1,9 @@
 <html>
 <body>
+
+<button id="export">Export</button>
+<pre id="serialization"></pre>
+
 <table>
   <tbody>
   {% for team in object_list %}
@@ -7,7 +11,7 @@
       <td>{{ team.player.name }}</td>
       <td><a href="{{ team.replay.url }}">Replay</a></td>
       {% for pokemon in team.data %}
-        <td class="pokemon">
+        <td class="pokemon" data-pokemon="{{ pokemon }}">
           <img src="https://www.smogon.com/forums//media/minisprites/{{ pokemon.lower }}.png"/>
         </td>
       {% endfor %}
@@ -17,16 +21,32 @@
 </table>
 </body>
 
+
 <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 
 <script>
 $( () => {
+  // Table sorting
   let opts = {
     animation: 150
   };
   $('tr').each((i, el) => {
     new Sortable(el, opts);
+  });
+
+  $('#export').click(() => {
+    // replay.url, pokemon
+    let urls = $('tr a').map((a, b) => b.href);
+    let children = $('tr').map((a, b) => b.children)
+    let res = urls.map((i, url) => {
+      return {
+        'url': url,
+        'team': Array.from(children[i]).slice(2).map((a, b) => $(a).data('pokemon'))
+      };
+    });
+    console.log('parsed');
+    $('#serialization').html(JSON.stringify([...res]));
   });
 } )
 </script>

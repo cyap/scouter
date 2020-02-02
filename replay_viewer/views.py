@@ -1,5 +1,6 @@
+import json
 import multiprocessing.dummy
-from typing import Dict
+from typing import Dict, Iterable
 
 import requests
 from bs4 import BeautifulSoup
@@ -32,14 +33,19 @@ def search_replays(player_name, tier, url_header=URL_HEADER):
 
 
 @transaction.atomic
-def process_replays(form) -> int:
-    urls = {
-        *form.cleaned_data['urls'],
-        *search_replays(form.cleaned_data['player_name'], form.cleaned_data['tier'])
-    } - set(Replay.objects.values_list('url', flat=True))
+def process_replays(
+    raw_urls: Iterable[str] = None,
+    player_name=None,
+    tier=None,
+    refresh=False
+) -> int:
+    if not (raw_urls or (player_name and tier)):
+        raise
+    urls = {*raw_urls, *search_replays(player_name, tier)}
+    if not refresh:
+        urls -= set(Replay.objects.values_list('url', flat=True))
     if not urls: return 1
-
-    logs = [requests.get(F'{url}.log').text for url in urls]
+    logs = [requests.get(F'{url}.json').json()['log'] for url in urls]
     parsed_logs = [LogParser(log, parsers=(PlayerParser, PokeParser)).parse() for log in logs]
 
     replays = Replay.objects.bulk_create(
@@ -114,7 +120,7 @@ class IndexView(FormView):
     def form_valid(self, form):
         # Create a new async task
         self.form = form
-        self.task_id = process_replays(form)
+        self.task_id = process_replays(form.cleaned_data['urls'], form.cleaned_data['player_name'], form.cleaned_data['tier'])
         return super().form_valid(form)
 
     def get_success_url(self):
@@ -122,7 +128,8 @@ class IndexView(FormView):
         params = {
             'player_name': self.form.cleaned_data['player_name'],
             'urls': self.form.cleaned_data['urls'],
-            'alt_names': self.form.cleaned_data['alt_names']
+            'alt_names': self.form.cleaned_data['alt_names'],
+            'serialization': self.form.cleaned_data['serialization']
         }
         return f'{base_url}?{urlencode(params, True)}'#?player_name={self.form.cleaned_data["player_name"]}'
         #return f'{base_url}?player_name={self.form.cleaned_data["player_name"]}'
@@ -137,7 +144,17 @@ class ResultsView(ListView):
             for name in self.request.GET.getlist('alt_names') + [self.request.GET['player_name']]
         )
         # TODO: should fetch from a task name: messaging queue
-        return Team.objects.filter(
+        teams = Team.objects.filter(
             Q(player__name__in=player_names) |
             Q(replay__url__in=self.request.GET.getlist('urls'))
         ).prefetch_related('replay', 'player')
+
+        serialization = json.loads(self.request.GET.get('serialization', '[]'))
+        # TODO: add additional teams from serialization
+        ordering = {replay['url']: replay['team'] for replay in serialization}
+        for team in teams:
+            if team.replay.url in ordering:
+                team.data.sort(
+                    key=lambda x: next((i for i, pokemon in enumerate(ordering[team.replay.url]) if pokemon == x), 7)
+                )
+        return teams
