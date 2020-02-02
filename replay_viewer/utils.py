@@ -18,3 +18,12 @@ def recursive_update(source: Dict, patch: Dict):
             source[k] += v
         else:
             source[k] = v
+
+
+def delete_duplicates(replays):
+    cache = set()
+    for replay in replays:
+        if replay.url not in cache:
+            cache.add(replay.url)
+        else:
+            replay.delete()
