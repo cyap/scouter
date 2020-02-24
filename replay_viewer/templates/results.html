@@ -3,18 +3,22 @@
 
 <button id="export">Export</button>
 <pre id="serialization"></pre>
+{% load viewer_extras %}
 
 <table>
   <tbody>
   {% for team in object_list %}
-    <tr>
-      <td>{{ team.player.name }}</td>
+    <tr data-player="{{ team.player.name }}">
+      {% for player in team.replay.player_set.all %}
+        <td>{{ player.name }}</td>
+      {% endfor %}
       <td><a href="{{ team.replay.url }}">Replay</a></td>
       {% for pokemon in team.data %}
         <td class="pokemon" data-pokemon="{{ pokemon }}">
-          <img src="https://www.smogon.com/forums//media/minisprites/{{ pokemon.lower }}.png"/>
+          <img src="https://www.smogon.com/forums//media/minisprites/{{ pokemon.lower|to_sprite }}.png"/>
         </td>
       {% endfor %}
+      <td><button class="remove-button">Remove</button></td>
     </tr>
   {% endfor %}
   </tbody>
@@ -25,37 +29,14 @@
 <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 
-<script>
-$( () => {
-  // Table sorting
-  let opts = {
-    animation: 150
-  };
-  $('tr').each((i, el) => {
-    new Sortable(el, opts);
-  });
-
-  $('#export').click(() => {
-    // replay.url, pokemon
-    let urls = $('tr a').map((a, b) => b.href);
-    let children = $('tr').map((a, b) => b.children)
-    let res = urls.map((i, url) => {
-      return {
-        'url': url,
-        'team': Array.from(children[i]).slice(2).map((a, b) => $(a).data('pokemon'))
-      };
-    });
-    console.log('parsed');
-    $('#serialization').html(JSON.stringify([...res]));
-  });
-} )
-</script>
+{% load static %}
+<script src="{% static 'replay_viewer/results.js' %}"></script>
 
 <style>
 td {
   border: 1px solid black;
 }
-.pokemon {
+.pokemon, tr {
   cursor: move;
 }
 </style>
