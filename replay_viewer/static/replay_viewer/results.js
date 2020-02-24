@@ -1,4 +1,7 @@
-$( () => { addSorting() })
+$( () => {
+    addSorting();
+    addExport();
+});
 
 function addSorting() {
   let s = new Sortable($('tbody')[0], {
@@ -15,12 +18,14 @@ function addSorting() {
   $('.remove-button').click( (e, f) => {
     $(e.target.parentNode.parentNode).remove();
   });
+}
 
+
+function addExport() {
   // Serialization
   $('#export').click(() => {
-    // replay.url, pokemon
     let urls = $('tr a').map((a, b) => b.href);
-    let children = $('tr').map((a, b) => b.children)
+    let children = $('tr').map((a, b) => $(b).find('.pokemon'));
     let res = urls.map((i, url) => {
       return {
         'url': url,
