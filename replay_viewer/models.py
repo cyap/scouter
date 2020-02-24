@@ -34,3 +34,6 @@ class Pokemon(models.Model):
 class Identity(models.Model):
     username = models.CharField(max_length=96)
 
+
+class Scout(models.Model):
+    data = JSONField(null=True)

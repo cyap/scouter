@@ -22,6 +22,7 @@ import replay_viewer.views
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', replay_viewer.views.IndexView.as_view(), name='index'),
+    #path('results', replay_viewer.views.ResultsView.as_view(), name='results'),
     path('results/<int:id>/', replay_viewer.views.ResultsView.as_view(), name='results'),
 ]
 

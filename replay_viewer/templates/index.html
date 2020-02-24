@@ -4,14 +4,20 @@
   <h4>Replay Scouter</h4>
     <form method="POST">
       {% csrf_token %}
-      {{ form }}
+      <table>
+      {{ form.as_table }}
+      </table>
       <input type="submit">
     </form>
   </body>
+  <script>
+
+  </script>
   <style>
     textarea {
       display: block;
     }
+
   </style>
 </html>
 

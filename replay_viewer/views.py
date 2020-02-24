@@ -1,35 +1,18 @@
-import json
-import multiprocessing.dummy
 from typing import Dict, Iterable
 
 import requests
-from bs4 import BeautifulSoup
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Prefetch
+from django.http import HttpResponseBadRequest
 from django.urls import reverse
-from django.utils.http import urlencode
+from django.utils.functional import cached_property
 from django.views.generic import FormView, ListView
-from urllib.parse import quote
 
 from replay_viewer.forms import SubmissionForm
 from replay_viewer.log_parser import PlayerParser, LogParser, PokeParser
-from replay_viewer.models import Replay, Team, Player
+from replay_viewer.models import Replay, Team, Player, Scout
+from replay_viewer.scrape import search_replays
 from replay_viewer.utils import normalize_str
-
-URL_HEADER = 'https://replay.pokemonshowdown.com/'
-
-
-def search_replays(player_name, tier, url_header=URL_HEADER):
-    """
-    Query the PS replay database for the saved replays of a given username (limit: last 10 pages' worth of replays).
-    """
-    base_url = f'{URL_HEADER}search?user={quote(player_name)}'
-    with multiprocessing.dummy.Pool(10) as pool:
-        pages = filter(None, pool.map(lambda i: requests.get(f'{base_url}&page={i}').text, range(1, 11)))
-    page = BeautifulSoup('\n'.join(pages), features='html.parser')
-
-    urls = (url.get('href').strip('/') for url in page.findAll('a') if url.get('data-target'))
-    return [f'{url_header}{url}' for url in urls if '-' in url and url.split('-')[-2].split('/')[-1] == tier]
 
 
 @transaction.atomic
@@ -39,8 +22,6 @@ def process_replays(
     tier=None,
     refresh=False
 ) -> int:
-    if not (raw_urls or (player_name and tier)):
-        raise
     urls = {*raw_urls, *search_replays(player_name, tier)}
     if not refresh:
         urls -= set(Replay.objects.values_list('url', flat=True))
@@ -93,7 +74,6 @@ def get_players(log) -> Dict:
 
 def get_teams(log):
     #return PokeParser(log, parsers=())
-    # FIXME: Seems slower
     # res = requests.get(F'{url}.json').json()
     # lines = (line for line in res['log'].splitlines() if line.startswith('|poke'))
 
@@ -114,42 +94,47 @@ class IndexView(FormView):
     template_name = 'index.html'
     form_class = SubmissionForm
 
-    form = None
-    task_id = None
+    @cached_property
+    def scout(self):
+        return Scout.objects.create()
 
+    @transaction.atomic()
     def form_valid(self, form):
-        # Create a new async task
-        self.form = form
-        self.task_id = process_replays(form.cleaned_data['urls'], form.cleaned_data['player_name'], form.cleaned_data['tier'])
+        self.scout.data = form.cleaned_data
+        self.scout.save()
         return super().form_valid(form)
 
     def get_success_url(self):
-        base_url = reverse('results', kwargs={'id': self.task_id})
-        params = {
-            'player_name': self.form.cleaned_data['player_name'],
-            'urls': self.form.cleaned_data['urls'],
-            'alt_names': self.form.cleaned_data['alt_names'],
-            'serialization': self.form.cleaned_data['serialization']
-        }
-        return f'{base_url}?{urlencode(params, True)}'#?player_name={self.form.cleaned_data["player_name"]}'
-        #return f'{base_url}?player_name={self.form.cleaned_data["player_name"]}'
+        return reverse('results', kwargs={'id': self.scout.pk})
 
 
 class ResultsView(ListView):
     template_name = 'results.html'
 
-    def get_queryset(self):
-        player_names = (
-            normalize_str(name)
-            for name in self.request.GET.getlist('alt_names') + [self.request.GET['player_name']]
-        )
-        # TODO: should fetch from a task name: messaging queue
-        teams = Team.objects.filter(
-            Q(player__name__in=player_names) |
-            Q(replay__url__in=self.request.GET.getlist('urls'))
-        ).prefetch_related('replay', 'player')
+    def get_session_form_data(self):
+        try:
+            return self.request.session['form_data']
+        except KeyError:
+            raise HttpResponseBadRequest
 
-        serialization = json.loads(self.request.GET.get('serialization', '[]'))
+    def get_form_data(self):
+        scout = Scout.objects.get(pk=self.kwargs['id'])
+        return scout.data
+
+    def get_queryset(self):
+        form_data = self.get_form_data()
+        serialization = form_data['serialization']
+        urls = (*form_data['urls'], *(replay['url'] for replay in serialization))
+        player_name = normalize_str(form_data['player_name'])
+
+        teams = Team.objects.filter(
+            Q(player__name__in=[player_name]) |
+            Q(replay__url__in=urls)
+        ).prefetch_related(
+            Prefetch('replay', queryset=Replay.objects.prefetch_related('player_set')),
+            'player'
+        )
+
         # TODO: add additional teams from serialization
         ordering = {replay['url']: replay['team'] for replay in serialization}
         for team in teams:
@@ -158,3 +143,5 @@ class ResultsView(ListView):
                     key=lambda x: next((i for i, pokemon in enumerate(ordering[team.replay.url]) if pokemon == x), 7)
                 )
         return teams
+
+

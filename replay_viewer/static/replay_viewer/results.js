@@ -15,6 +15,7 @@ function addSorting() {
     });
   });
 
+  // Change to hide
   $('.remove-button').click( (e, f) => {
     $(e.target.parentNode.parentNode).remove();
   });

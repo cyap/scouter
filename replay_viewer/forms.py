@@ -3,35 +3,66 @@ from collections import Iterable
 from typing import Dict
 
 from django import forms
+from django.core.exceptions import ValidationError
 
 
 class SubmissionForm(forms.Form):
-    tier = forms.CharField()
+    tier = forms.CharField(required=False)
     player_name = forms.CharField(required=False)
     urls = forms.CharField(widget=forms.Textarea, required=False)
-    alt_names = forms.CharField(widget=forms.Textarea, required=False)  # Add more
-    thread = forms.URLField(required=False)
+    #thread = forms.URLField(required=False)
     serialization = forms.CharField(widget=forms.Textarea, required=False)
+    # TODO: duplicate form fields
 
     # Required: one of (player_name, tier), urls
 
     def clean_urls(self):
         return self.data['urls'].splitlines()
 
-    def clean_alt_names(self):
-        return self.data['alt_names'].splitlines()
-
     def clean_serialization(self):
+        ERROR_MSG = """Serialization should be in the following form:
+        [
+            {
+                "url": https://replay.pokemonshowdown.com/smogtours-ou-39893,
+                "team":["Clefable","Hippowdon","Excadrill","Rotom-Mow","Mandibuzz","Dragapult"]
+            },
+            {
+                "url": ...
+                "team": ...
+            },
+            ...
+        ]
         """
-        Should be in the form:
-        {"0":
-            {'url': <str>, 'team' (optional): (...)
-        }
-        """
-        if not self.data['serialization']: return []
-        serialization = json.loads(self.data['serialization'])
-        assert isinstance(serialization, Iterable), 'Is a list'
-        assert all(isinstance(replay, Dict) for replay in serialization)
-        assert all('url' in replay for replay in serialization)
-        assert all(isinstance(replay.get('team', []), Iterable) for replay in serialization)
-        return self.data['serialization']
+        if not self.data['serialization']:
+            return []
+
+        try:
+            serialization = json.loads(self.data['serialization'])
+            assert isinstance(serialization, Iterable)
+            assert all(isinstance(replay, Dict) for replay in serialization)
+            assert all(isinstance(replay.get('url'), str) for replay in serialization)
+            # assert all(isinstance(replay.get('team', []), Iterable) for replay in serialization)
+        except (AssertionError, json.JSONDecodeError):
+            raise ValidationError(ERROR_MSG)
+        else:
+            return serialization
+
+    def clean(self):
+        try:
+            assert any((
+                self.data['tier'] and self.data['player_name'],
+                self.data['urls'],
+                #self.data['thread'],
+                self.data['serialization']
+            ))
+        except AssertionError:
+            raise ValidationError('One of the following is required: tier/player_name, urls, serialization.')
+
+        return super().clean()
+
+    def as_serialization(self):
+        urls = {replay['url'] for replay in self.cleaned_data['serialization']}
+        return self.cleaned_data['serialization'] + [{
+            'url': url,
+            'team': None
+        } for url in self.cleaned_data['urls'] if url not in urls]

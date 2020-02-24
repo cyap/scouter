@@ -10,7 +10,13 @@
   {% for team in object_list %}
     <tr data-player="{{ team.player.name }}">
       {% for player in team.replay.player_set.all %}
-        <td>{{ player.name }}</td>
+        <td
+          {% if player.name == team.player.name %}
+            class="current-player"
+          {% endif %}
+        >
+          {{ player.name }}
+        </td>
       {% endfor %}
       <td><a href="{{ team.replay.url }}">Replay</a></td>
       {% for pokemon in team.data %}
@@ -38,6 +44,9 @@ td {
 }
 .pokemon, tr {
   cursor: move;
+}
+.current-player {
+  background-color: yellow;
 }
 </style>
 </html>
