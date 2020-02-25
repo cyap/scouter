@@ -6,19 +6,7 @@ from django import forms
 from django.core.exceptions import ValidationError
 
 
-class SubmissionForm(forms.Form):
-    tier = forms.CharField(required=False)
-    player_name = forms.CharField(required=False)
-    urls = forms.CharField(widget=forms.Textarea, required=False)
-    #thread = forms.URLField(required=False)
-    serialization = forms.CharField(widget=forms.Textarea, required=False)
-    # TODO: duplicate form fields
-
-    # Required: one of (player_name, tier), urls
-
-    def clean_urls(self):
-        return self.data['urls'].splitlines()
-
+class SerializationFormMixin:
     def clean_serialization(self):
         ERROR_MSG = """Serialization should be in the following form:
         [
@@ -47,6 +35,20 @@ class SubmissionForm(forms.Form):
         else:
             return serialization
 
+
+class SubmissionForm(SerializationFormMixin, forms.Form):
+    tier = forms.CharField(required=False)
+    player_name = forms.CharField(required=False)
+    urls = forms.CharField(widget=forms.Textarea, required=False)
+    serialization = forms.CharField(widget=forms.Textarea, required=False)
+    #thread = forms.URLField(required=False)
+    # TODO: duplicate form fields
+
+    # Required: one of (player_name, tier), urls
+
+    def clean_urls(self):
+        return self.data['urls'].splitlines()
+
     def clean(self):
         try:
             assert any((
@@ -66,3 +68,8 @@ class SubmissionForm(forms.Form):
             'url': url,
             'team': None
         } for url in self.cleaned_data['urls'] if url not in urls]
+
+
+class ScoutSerializationForm(forms.Form, SerializationFormMixin):
+    serialization = forms.CharField(widget=forms.Textarea, required=False)
+    scout_id = forms.IntegerField(required=False)

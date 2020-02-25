@@ -1,14 +1,29 @@
+{% load viewer_extras %}
 <html>
 <body>
 
+<button id="expand-all">Expand All</button>
 <button id="export">Export</button>
-<pre id="serialization"></pre>
-{% load viewer_extras %}
+<form
+  id="save-form"
+  style="display:inline"
+  data-scout-id="{{ view.kwargs.id }}"
+  data-url="{% url 'results_save' %}"
+>
+  {% csrf_token %}
+  <input type="submit" id="save" value="Save">
+</form>
+<button id="undo">Undo Delete</button>
 
+<pre id="serialization"></pre>
 <table>
   <tbody>
   {% for team in object_list %}
     <tr data-player="{{ team.player.name }}">
+      <td>
+        <button class="remove-button">Remove</button>
+        <button class="expand-button">Expand</button>
+      </td>
       {% for player in team.replay.player_set.all %}
         <td
           {% if player.name == team.player.name %}
@@ -20,11 +35,14 @@
       {% endfor %}
       <td><a href="{{ team.replay.url }}">Replay</a></td>
       {% for pokemon in team.data %}
-        <td class="pokemon" data-pokemon="{{ pokemon }}">
+        <td
+          class="pokemon"
+          data-pokemon="{{ pokemon }}"
+          data-export="{{ pokemon }}"
+        >
           <img src="https://www.smogon.com/forums//media/minisprites/{{ pokemon.lower|to_sprite }}.png"/>
         </td>
       {% endfor %}
-      <td><button class="remove-button">Remove</button></td>
     </tr>
   {% endfor %}
   </tbody>

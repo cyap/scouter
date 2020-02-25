@@ -6,6 +6,8 @@ $( () => {
     const history = []
     addHide(history);
     addUndo(history);
+
+    addSave();
 });
 
 function addSorting() {
@@ -39,20 +41,21 @@ function addUndo(history) {
   })
 }
 
+function serialize() {
+  let rows = $('tr').filter((i, node) => $(node).css('display') !== 'none');
+  let urls = rows.find('a').map((a, b) => b.href);
+  let children = rows.map((a, b) => $(b).find('.pokemon'));
+  let res = urls.map((i, url) => {
+    return {
+      'url': url,
+      'team': Array.from(children[i]).map((a, b) => $(a).data('pokemon'))
+    };
+  });
+  return JSON.stringify([...res]);
+}
 
 function addExport() {
-  $('#export').click(() => {
-    let rows = $('tr').filter((i, node) => $(node).css('display') !== 'none');
-    let urls = rows.find('a').map((a, b) => b.href);
-    let children = rows.map((a, b) => $(b).find('.pokemon'));
-    let res = urls.map((i, url) => {
-      return {
-        'url': url,
-        'team': Array.from(children[i]).slice(4).map((a, b) => $(a).data('pokemon'))
-      };
-    });
-    $('#serialization').html(JSON.stringify([...res]));
-  });
+  $('#export').click(() => { $('#serialization').html(serialize()); });
 }
 
 function addExpand() {
@@ -91,4 +94,25 @@ function compressRow(button) {
   pokemon_cells.find('.expand').remove();
   button.text('Expand');
   button.toggleClass('expanded');
+}
+
+function addSave() {
+  $('#save-form').submit( (e, f) => {
+      e.preventDefault();
+      console.log(e);
+      $.ajax({
+        type: 'POST',
+        url: $('#save-form').data('url'),
+        data: {
+          serialization: serialize(),
+          scout_id: $('#save-form').data('scout-id'),
+          csrfmiddlewaretoken: $(e.target).serializeArray()[0].value
+        },
+        success: (res) => {
+          let url = res.url;
+          window.history.replaceState('', '', url);
+          $('#save-form').data('scout-id', res.scout_id);
+        }
+      })
+  })
 }

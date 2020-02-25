@@ -37,3 +37,4 @@ class Identity(models.Model):
 
 class Scout(models.Model):
     data = JSONField(null=True)
+    session_key = models.CharField(max_length=256)

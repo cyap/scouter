@@ -1,14 +1,15 @@
 from typing import Dict, Iterable
 
 import requests
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.db.models import Q, Prefetch
-from django.http import HttpResponseBadRequest
+from django.http import HttpResponseBadRequest, JsonResponse
 from django.urls import reverse
 from django.utils.functional import cached_property
 from django.views.generic import FormView, ListView
 
-from replay_viewer.forms import SubmissionForm
+from replay_viewer.forms import SubmissionForm, ScoutSerializationForm
 from replay_viewer.log_parser import PlayerParser, LogParser, PokeParser
 from replay_viewer.models import Replay, Team, Player, Scout
 from replay_viewer.scrape import search_replays
@@ -94,32 +95,24 @@ class IndexView(FormView):
     template_name = 'index.html'
     form_class = SubmissionForm
 
-    @cached_property
-    def scout(self):
-        return Scout.objects.create()
-
-    @transaction.atomic()
+    #
+    # @transaction.atomic()
     def form_valid(self, form):
-        self.scout.data = form.cleaned_data
-        self.scout.save()
+        self.request.session['form_data'] = form.cleaned_data
         return super().form_valid(form)
+        # self.scout.data = form.cleaned_data
+        #     self.scout.save()
 
     def get_success_url(self):
-        return reverse('results', kwargs={'id': self.scout.pk})
+        return reverse('results')
+        #return reverse('results', kwargs={'id': self.scout.pk})
 
 
-class ResultsView(ListView):
+class BaseResultsView(ListView):
     template_name = 'results.html'
 
-    def get_session_form_data(self):
-        try:
-            return self.request.session['form_data']
-        except KeyError:
-            raise HttpResponseBadRequest
-
     def get_form_data(self):
-        scout = Scout.objects.get(pk=self.kwargs['id'])
-        return scout.data
+        raise NotImplemented
 
     def get_queryset(self):
         form_data = self.get_form_data()
@@ -145,3 +138,47 @@ class ResultsView(ListView):
         return teams
 
 
+class ResultsView(BaseResultsView):
+
+    def get_form_data(self):
+        try:
+            return self.request.session['form_data']
+        except KeyError:
+            raise HttpResponseBadRequest
+
+
+class ResultsShareView(BaseResultsView):
+
+    def get_form_data(self):
+        try:
+            return {
+                'serialization': Scout.objects.get(pk=self.kwargs['id']).data,
+                'urls': [],
+                'player_name': ''
+            }
+        except ObjectDoesNotExist:
+            raise HttpResponseBadRequest
+
+
+class ResultsSaveView(FormView):
+    form_class = ScoutSerializationForm
+
+    @staticmethod
+    def _get_url(_id):
+        return reverse('results_share', kwargs={'id': _id})
+
+    @transaction.atomic
+    def form_valid(self, form):
+        print(form.cleaned_data)
+        scout = (
+            Scout.objects.create(
+                data=form.cleaned_data['serialization'],
+                session_key=self.request.session.session_key
+            )
+            if form.cleaned_data['scout_id'] is None
+            else Scout.objects.get(pk=form.cleaned_data['scout_id'])
+        )
+        return JsonResponse(data={
+            'url': self._get_url(scout.pk),
+            'scout_id': scout.pk
+        })
