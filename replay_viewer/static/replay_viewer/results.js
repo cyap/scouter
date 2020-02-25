@@ -45,10 +45,12 @@ function serialize() {
   let rows = $('tr').filter((i, node) => $(node).css('display') !== 'none');
   let urls = rows.find('a').map((a, b) => b.href);
   let children = rows.map((a, b) => $(b).find('.pokemon'));
+  let players = rows.map((a, b) => $(b).data('player-num'))
   let res = urls.map((i, url) => {
     return {
       'url': url,
-      'team': Array.from(children[i]).map((a, b) => $(a).data('pokemon'))
+      'team': Array.from(children[i]).map((a, b) => $(a).data('pokemon')),
+      'player': players[i]
     };
   });
   return JSON.stringify([...res]);
@@ -99,7 +101,6 @@ function compressRow(button) {
 function addSave() {
   $('#save-form').submit( (e, f) => {
       e.preventDefault();
-      console.log(e);
       $.ajax({
         type: 'POST',
         url: $('#save-form').data('url'),

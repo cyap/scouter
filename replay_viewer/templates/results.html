@@ -19,7 +19,10 @@
 <table>
   <tbody>
   {% for team in object_list %}
-    <tr data-player="{{ team.player.name }}">
+    <tr
+      data-player="{{ team.player.name }}"
+      data-player-num="{{ team.player.player_num }}"
+    >
       <td>
         <button class="remove-button">Remove</button>
         <button class="expand-button">Expand</button>

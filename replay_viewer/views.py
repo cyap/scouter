@@ -4,7 +4,8 @@ import requests
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
-from django.db.models import Q, Prefetch
+from django.db.models import Q, Prefetch, CharField
+from django.db.models.functions import Cast, Concat
 from django.http import HttpResponseBadRequest, JsonResponse
 from django.urls import reverse
 from django.utils.functional import cached_property
@@ -117,11 +118,10 @@ class BaseResultsView(ListView):
 
     def get_queryset(self):
         form_data = self.get_form_data()
-        serialization = form_data['serialization']
         player_name = normalize_str(form_data['player_name'])
         tier = form_data['tier']
         urls = {
-            *form_data['urls'], *(replay['url'] for replay in serialization),
+            *form_data['urls'],
             *search_replays(player_name, tier)
         }
         process_replays(urls)
@@ -137,13 +137,6 @@ class BaseResultsView(ListView):
             'player'
         )
 
-        # TODO: add additional teams from serialization
-        ordering = {replay['url']: replay['team'] for replay in serialization}
-        for team in teams:
-            if team.replay.url in ordering:
-                team.data.sort(
-                    key=lambda x: next((i for i, pokemon in enumerate(ordering[team.replay.url]) if pokemon == x), 7)
-                )
         return teams
 
 
@@ -158,16 +151,27 @@ class ResultsView(BaseResultsView):
 
 class ResultsShareView(BaseResultsView):
 
-    def get_form_data(self):
-        try:
-            return {
-                'serialization': Scout.objects.get(pk=self.kwargs['id']).data,
-                'urls': [],
-                'player_name': '',
-                'tier': ''
-            }
-        except ObjectDoesNotExist:
-            raise HttpResponseBadRequest
+    def get_queryset(self):
+        serialization = Scout.objects.get(pk=self.kwargs['id']).data['serialization']
+        team_keys = [replay['url'] + str(replay['player']) for replay in serialization]
+
+        teams = Team.objects.annotate(
+            team_key=Concat('replay__url', Cast('player__player_num', output_field=CharField())),
+        ).filter(
+            team_key__in=team_keys
+        ).prefetch_related(
+            Prefetch('replay', queryset=Replay.objects.prefetch_related('player_set')),
+            'player'
+        )
+
+        ordering = {replay['url']: replay['team'] for replay in serialization}
+        for team in teams:
+            if team.replay.url in ordering:
+                team.data.sort(
+                    key=lambda x: next((i for i, pokemon in enumerate(ordering[team.replay.url]) if pokemon == x), 7)
+                )
+        cache = {team.team_key: team for team in teams}
+        return [cache[team_key] for team_key in team_keys]
 
 
 class ResultsSaveView(FormView):
@@ -179,14 +183,15 @@ class ResultsSaveView(FormView):
 
     @transaction.atomic
     def form_valid(self, form):
-        scout = (
-            Scout.objects.create(
-                data=form.cleaned_data['serialization'],
+        if form.cleaned_data['scout_id'] is None:
+            scout = Scout.objects.create(
+                data={'serialization': form.cleaned_data['serialization']},
                 session_key=self.request.session.session_key
             )
-            if form.cleaned_data['scout_id'] is None
-            else Scout.objects.get(pk=form.cleaned_data['scout_id'])
-        )
+        else:
+            scout = Scout.objects.get(pk=form.cleaned_data['scout_id'])
+            scout.data = {'serialization': form.cleaned_data['serialization']}
+            scout.save()
         return JsonResponse(data={
             'url': self._get_url(scout.pk),
             'scout_id': scout.pk

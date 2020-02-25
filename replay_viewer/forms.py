@@ -13,10 +13,12 @@ class SerializationFormMixin:
             {
                 "url": https://replay.pokemonshowdown.com/smogtours-ou-39893,
                 "team":["Clefable","Hippowdon","Excadrill","Rotom-Mow","Mandibuzz","Dragapult"]
+                "player": 1
             },
             {
                 "url": ...
                 "team": ...
+                "player": ...
             },
             ...
         ]
@@ -29,6 +31,7 @@ class SerializationFormMixin:
             assert isinstance(serialization, Iterable)
             assert all(isinstance(replay, Dict) for replay in serialization)
             assert all(isinstance(replay.get('url'), str) for replay in serialization)
+            assert all(isinstance(replay.get('player'), int) for replay in serialization)
             # assert all(isinstance(replay.get('team', []), Iterable) for replay in serialization)
         except (AssertionError, json.JSONDecodeError):
             raise ValidationError(ERROR_MSG)
@@ -36,11 +39,10 @@ class SerializationFormMixin:
             return serialization
 
 
-class SubmissionForm(SerializationFormMixin, forms.Form):
+class SubmissionForm(forms.Form):
     player_name = forms.CharField(required=False)
     tier = forms.CharField(required=False)
     urls = forms.CharField(widget=forms.Textarea, required=False)
-    serialization = forms.CharField(widget=forms.Textarea, required=False)
     #thread = forms.URLField(required=False)
     # TODO: duplicate form fields
 
@@ -55,7 +57,6 @@ class SubmissionForm(SerializationFormMixin, forms.Form):
                 self.data['tier'] and self.data['player_name'],
                 self.data['urls'],
                 #self.data['thread'],
-                self.data['serialization']
             ))
         except AssertionError:
             raise ValidationError('One of the following is required: tier/player_name, urls, serialization.')
