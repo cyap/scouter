@@ -2,6 +2,10 @@ $( () => {
     addSorting();
     addExport();
     addExpand();
+
+    const history = []
+    addHide(history);
+    addUndo(history);
 });
 
 function addSorting() {
@@ -16,18 +20,31 @@ function addSorting() {
     });
   });
 
+}
+
+function addHide(history) {
   // Change to hide
   $('.remove-button').click( (e, f) => {
-    $(e.target.parentNode.parentNode).remove();
+    let row = $(e.target.parentNode.parentNode);
+    row.toggle();
+    history.push(row);
   });
+}
+
+function addUndo(history) {
+  $('#undo').click( (e, f) => {
+     if (!history) return;
+     let row = history.pop();
+     row.toggle();
+  })
 }
 
 
 function addExport() {
-  // Serialization
   $('#export').click(() => {
-    let urls = $('tr a').map((a, b) => b.href);
-    let children = $('tr').map((a, b) => $(b).find('.pokemon'));
+    let rows = $('tr').filter((i, node) => $(node).css('display') !== 'none');
+    let urls = rows.find('a').map((a, b) => b.href);
+    let children = rows.map((a, b) => $(b).find('.pokemon'));
     let res = urls.map((i, url) => {
       return {
         'url': url,
