@@ -37,8 +37,8 @@ class SerializationFormMixin:
 
 
 class SubmissionForm(SerializationFormMixin, forms.Form):
-    tier = forms.CharField(required=False)
     player_name = forms.CharField(required=False)
+    tier = forms.CharField(required=False)
     urls = forms.CharField(widget=forms.Textarea, required=False)
     serialization = forms.CharField(widget=forms.Textarea, required=False)
     #thread = forms.URLField(required=False)

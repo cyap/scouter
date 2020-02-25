@@ -1,6 +1,7 @@
 from typing import Dict, Iterable
 
 import requests
+from django.contrib.postgres.aggregates import ArrayAgg
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.db.models import Q, Prefetch
@@ -23,7 +24,7 @@ def process_replays(
     tier=None,
     refresh=False
 ) -> int:
-    urls = {*raw_urls, *search_replays(player_name, tier)}
+    urls = {*raw_urls}
     if not refresh:
         urls -= set(Replay.objects.values_list('url', flat=True))
     if not urls: return 1
@@ -117,12 +118,20 @@ class BaseResultsView(ListView):
     def get_queryset(self):
         form_data = self.get_form_data()
         serialization = form_data['serialization']
-        urls = (*form_data['urls'], *(replay['url'] for replay in serialization))
         player_name = normalize_str(form_data['player_name'])
+        tier = form_data['tier']
+        urls = {
+            *form_data['urls'], *(replay['url'] for replay in serialization),
+            *search_replays(player_name, tier)
+        }
+        process_replays(urls)
 
-        teams = Team.objects.filter(
-            Q(player__name__in=[player_name]) |
-            Q(replay__url__in=urls)
+        # TODO: go back further
+        teams = Team.objects.annotate(
+            playerarr=ArrayAgg('replay__player__name')
+        ).filter(
+            Q(replay__url__in=urls),
+            (Q(player__name__in=[player_name]) | ~Q(playerarr__contains=[player_name]))
         ).prefetch_related(
             Prefetch('replay', queryset=Replay.objects.prefetch_related('player_set')),
             'player'
@@ -154,7 +163,8 @@ class ResultsShareView(BaseResultsView):
             return {
                 'serialization': Scout.objects.get(pk=self.kwargs['id']).data,
                 'urls': [],
-                'player_name': ''
+                'player_name': '',
+                'tier': ''
             }
         except ObjectDoesNotExist:
             raise HttpResponseBadRequest
@@ -169,7 +179,6 @@ class ResultsSaveView(FormView):
 
     @transaction.atomic
     def form_valid(self, form):
-        print(form.cleaned_data)
         scout = (
             Scout.objects.create(
                 data=form.cleaned_data['serialization'],
