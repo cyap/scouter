@@ -2,7 +2,7 @@
 <html>
   <body>
   <h4>Replay Scouter</h4>
-    <form method="POST">
+    <form method="POST" action="{% url 'results' %}">
       {% csrf_token %}
       <table>
       {{ form.as_table }}

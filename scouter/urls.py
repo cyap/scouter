@@ -22,7 +22,7 @@ import replay_viewer.views
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('mannatrix', replay_viewer.views.IndexView.as_view(), name='index'),
-    path('mannatrix/results', replay_viewer.views.ResultsView.as_view(), name='results'),
+    path('mannatrix/results', replay_viewer.views.IndexView.as_view(), name='results'),
     path('mannatrix/results/<int:id>/', replay_viewer.views.ResultsShareView.as_view(), name='results_share'),
     path('mannatrix/results/save/', replay_viewer.views.ResultsSaveView.as_view(), name='results_save'),
 ]

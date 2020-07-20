@@ -6,8 +6,9 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.db.models import Q, Prefetch, CharField
 from django.db.models.functions import Cast, Concat
-from django.http import HttpResponseBadRequest, JsonResponse
-from django.urls import reverse
+from django.http import HttpResponseBadRequest, JsonResponse, HttpRequest
+from django.shortcuts import redirect
+from django.urls import reverse, reverse_lazy
 from django.utils.functional import cached_property
 from django.views.generic import FormView, ListView
 
@@ -97,59 +98,49 @@ class IndexView(FormView):
     template_name = 'index.html'
     form_class = SubmissionForm
 
-    #
-    # @transaction.atomic()
     def form_valid(self, form):
-        self.request.session['form_data'] = form.cleaned_data
-        return super().form_valid(form)
-        # self.scout.data = form.cleaned_data
-        #     self.scout.save()
-
-    def get_success_url(self):
-        return reverse('results')
-        #return reverse('results', kwargs={'id': self.scout.pk})
-
-
-class BaseResultsView(ListView):
-    template_name = 'results.html'
-
-    def get_form_data(self):
-        raise NotImplemented
-
-    def get_queryset(self):
-        form_data = self.get_form_data()
-        player_name = normalize_str(form_data['player_name'])
-        tier = form_data['tier']
+        # TODO: some worker
+        player_name = normalize_str(form.cleaned_data['player_name'])
+        tier = form.cleaned_data['tier']
         urls = {
-            *form_data['urls'],
+            *form.cleaned_data['urls'],
             *search_replays(player_name, tier)
         }
         process_replays(urls)
+        return ResultsView.as_view(urls=urls, player_name=player_name)(self.request)
 
-        # TODO: go back further
+
+class BaseTeamListView(ListView):
+    template_name = 'results.html'
+
+
+class ResultsView(BaseTeamListView):
+    urls = None
+    player_name = None
+
+    def __init__(self, urls=None, player_name=None, **kwargs):
+        self.urls = urls
+        self.player_name = player_name
+        super().__init__(**kwargs)
+
+    def post(self, request, *args, **kwargs):
+        return self.get(request, *args, **kwargs)
+
+    def get_queryset(self):
+        # TODO: go back further: what does this mean
         teams = Team.objects.annotate(
             playerarr=ArrayAgg('replay__player__name')
         ).filter(
-            Q(replay__url__in=urls),
-            (Q(player__name__in=[player_name]) | ~Q(playerarr__contains=[player_name]))
+            Q(replay__url__in=self.urls),
+            (Q(player__name__in=[self.player_name]) | ~Q(playerarr__contains=[self.player_name]))
         ).prefetch_related(
             Prefetch('replay', queryset=Replay.objects.prefetch_related('player_set')),
             'player'
         )
-
         return teams
 
 
-class ResultsView(BaseResultsView):
-
-    def get_form_data(self):
-        try:
-            return self.request.session['form_data']
-        except KeyError:
-            raise HttpResponseBadRequest
-
-
-class ResultsShareView(BaseResultsView):
+class ResultsShareView(BaseTeamListView):
 
     def get_queryset(self):
         serialization = Scout.objects.get(pk=self.kwargs['id']).data['serialization']
